@@ -146,19 +146,26 @@ class FakeSandboxClient:
 
 
 class FakePage:
-    def __init__(self, text: str = "", title: str = ""):
+    def __init__(self, text: str = "", title: str = "", blocks=None):
         self._text = text
         self._title = title
+        self._blocks = blocks or []
         self.goto_calls: list[str] = []
 
     async def goto(self, url, wait_until=None):
         self.goto_calls.append(url)
+
+    async def wait_for_selector(self, selector, timeout=None):
+        return None
 
     async def title(self):
         return self._title
 
     async def content(self):
         return self._text
+
+    async def evaluate(self, expression):
+        return {"text": self._text, "blocks": self._blocks}
 
     async def screenshot(self, full_page=False, path=None):
         data = b"\x89PNG\r\n\x1a\n" + b"fake"

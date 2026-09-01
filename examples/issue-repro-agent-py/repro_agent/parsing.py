@@ -27,24 +27,42 @@ def fenced_blocks(markdown: str, lang: str | None = None) -> list[str]:
     return out
 
 
+def _norm_heading(line: str) -> str:
+    return line.strip().lstrip("#").strip().strip("*").strip().rstrip(":").strip()
+
+
+def _looks_like_heading(line: str) -> bool:
+    """A markdown heading, or a rendered-DOM bare heading: a short, capitalised
+    line with no sentence punctuation (GitHub innerText drops the `#`)."""
+    s = line.strip()
+    if not s:
+        return False
+    if s.lstrip().startswith("#"):
+        return True
+    if s.startswith("**") and s.endswith("**") and len(s) > 4:
+        return True
+    words = s.split()
+    return (
+        len(words) <= 5
+        and s[0].isupper()
+        and not s.endswith((".", "!", "?", ",", ";", ")", "`"))
+    )
+
+
 def section_after(markdown: str, heading: str) -> str:
-    """Text between a heading matching `heading` (case-insensitive, `#`- or
-    `**`-style) and the next heading."""
+    """Text between a heading matching `heading` (case-insensitive; markdown
+    `#`/`**` or a rendered-DOM bare line) and the next heading."""
     want = heading.strip().lower()
     collecting = False
     buf: list[str] = []
     for line in markdown.splitlines():
-        stripped = line.strip().lstrip("#").strip().strip("*").strip()
-        is_heading = line.lstrip().startswith("#") or (
-            line.strip().startswith("**") and line.strip().endswith("**") and len(line.strip()) > 4
-        )
-        if is_heading:
+        if _looks_like_heading(line):
             if collecting:
                 break
-            if stripped.lower() == want:
+            if _norm_heading(line).lower() == want:
                 collecting = True
             continue
-        if collecting:
+        if collecting and line.strip():
             buf.append(line)
     return "\n".join(buf).strip()
 

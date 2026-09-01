@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 class RawIssue:
     title: str
     body: str
+    code_blocks: list[dict] = field(default_factory=list)  # {"lang": str, "code": str}
     comments: list[str] = field(default_factory=list)
 
 
