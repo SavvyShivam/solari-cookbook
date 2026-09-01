@@ -33,5 +33,32 @@ def test_build_patch_prompt_includes_context():
 
 def test_propose_patch_without_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     with pytest.raises(LLMUnavailable):
         propose_patch(issue=_issue(), failing_test="t", traceback="tb", files={})
+
+
+def test_complete_uses_groq_when_key_set(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "```diff\n--- a\n+++ b\n```"}}]}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["model"] = json["model"]
+        captured["auth"] = headers["Authorization"]
+        return FakeResp()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    diff = propose_patch(issue=_issue(), failing_test="t", traceback="tb", files={})
+    assert diff == "--- a\n+++ b"
+    assert captured["url"].startswith("https://api.groq.com/")
+    assert captured["model"] == "llama-3.3-70b-versatile"
+    assert captured["auth"] == "Bearer gsk_test"

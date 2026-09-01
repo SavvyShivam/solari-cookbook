@@ -26,8 +26,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def resolve_flags(args: argparse.Namespace, env: dict) -> dict:
     warnings: list[str] = []
     use_llm = not args.dry_run
-    if use_llm and not env.get("ANTHROPIC_API_KEY"):
-        warnings.append("ANTHROPIC_API_KEY not set — running as --dry-run (repro + report only)")
+    has_llm_key = bool(env.get("GROQ_API_KEY") or env.get("ANTHROPIC_API_KEY"))
+    if use_llm and not has_llm_key:
+        warnings.append(
+            "no LLM key (GROQ_API_KEY / ANTHROPIC_API_KEY) — running as --dry-run "
+            "(repro + report only)"
+        )
         use_llm = False
     token = env.get("GITHUB_TOKEN")
     username = env.get("GITHUB_USERNAME")

@@ -5,13 +5,29 @@ import re
 
 from .models import Issue
 
-DEFAULT_MODEL = "claude-sonnet-5"
+# Provider is picked by which key is set. GROQ_API_KEY wins if both are present.
+DEFAULT_MODEL = {
+    "groq": "llama-3.3-70b-versatile",
+    "anthropic": "claude-sonnet-5",
+}
 _DIFF_FENCE_RE = re.compile(r"```(?:diff|patch)?\n(.*?)```", re.DOTALL)
 _DIFF_START_RE = re.compile(r"(^|\n)(--- |diff --git )")
 
 
 class LLMUnavailable(RuntimeError):
     pass
+
+
+def _provider() -> str | None:
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    return None
+
+
+def llm_available() -> bool:
+    return _provider() is not None
 
 
 def extract_diff(text: str) -> str:
@@ -49,20 +65,35 @@ def build_repro_prompt(issue: Issue) -> str:
     )
 
 
-def _complete(prompt: str, model: str | None) -> str:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        raise LLMUnavailable("ANTHROPIC_API_KEY not set")
-    from anthropic import Anthropic
+def _model_for(provider: str, override: str | None) -> str:
+    return override or os.environ.get("REPRO_AGENT_MODEL") or DEFAULT_MODEL[provider]
 
-    chosen = model or os.environ.get("REPRO_AGENT_MODEL") or DEFAULT_MODEL
-    client = Anthropic(api_key=key)
-    msg = client.messages.create(
-        model=chosen,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
+
+def _complete(prompt: str, model: str | None) -> str:
+    provider = _provider()
+    if provider is None:
+        raise LLMUnavailable("no LLM key set (GROQ_API_KEY or ANTHROPIC_API_KEY)")
+    chosen = _model_for(provider, model)
+    messages = [{"role": "user", "content": prompt}]
+
+    if provider == "anthropic":
+        from anthropic import Anthropic
+
+        client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        msg = client.messages.create(model=chosen, max_tokens=2000, messages=messages)
+        return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+
+    # groq — OpenAI-compatible chat completions
+    import httpx
+
+    resp = httpx.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
+        json={"model": chosen, "messages": messages, "max_tokens": 2000, "temperature": 0.2},
+        timeout=60,
     )
-    return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 def propose_patch(*, issue: Issue, failing_test: str, traceback: str,

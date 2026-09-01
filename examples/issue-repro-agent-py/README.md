@@ -62,7 +62,7 @@ row because the handler guards with `if limit:` and `0` is falsy).
 | `issue.py` | launches a stealth browser, reads the issue DOM, distils repro steps; uses the first ` ```python ` block in the issue as the repro test, or asks Claude for one | `solari-browser` |
 | `workspace.py` | creates a sandbox, `git.clone --depth 1`, detects `pytest` / `maven` / `npm`, runs setup | `solari-sandbox` |
 | `repro.py` | writes `tests/test_repro_1.py`, runs it; "reproduced" == the test fails | `sandbox.commands` / `files` |
-| `llm.py` | one `propose_patch()` / `propose_repro_test()`; `claude-sonnet-5` default, `REPRO_AGENT_MODEL` to change | Anthropic |
+| `llm.py` | one `propose_patch()` / `propose_repro_test()`; provider picked by key — `GROQ_API_KEY` (`llama-3.3-70b-versatile`) or `ANTHROPIC_API_KEY` (`claude-sonnet-5`), `REPRO_AGENT_MODEL` to override | Groq / Anthropic |
 | `fix.py` | feeds Claude the failing test + traceback + the files it names, applies the diff with `git apply`, re-runs, retries once, reverts between tries | `sandbox` |
 | `publish.py` | `git checkout -b`, commit, `git.push` with a per-call PAT, then `POST /repos/{o}/{r}/pulls` | `sandbox.git` + `httpx` |
 | `report.py` | renders `report.html`, serves it from the sandbox, screenshots it through the browser | `sandbox.preview_url` + `browser` |

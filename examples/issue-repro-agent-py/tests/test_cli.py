@@ -15,14 +15,20 @@ def test_resolve_flags_dry_run_forces_no_llm():
     assert flags["use_llm"] is False
 
 
-def test_resolve_flags_missing_anthropic_warns_and_disables_llm():
+def test_resolve_flags_missing_llm_key_warns_and_disables_llm():
     a = parse_args(["--issue-url", "u"])
     flags = resolve_flags(a, {})
     assert flags["use_llm"] is False
-    assert any("ANTHROPIC_API_KEY" in w for w in flags["warnings"])
+    assert any("LLM key" in w for w in flags["warnings"])
 
 
-def test_resolve_flags_happy_path():
+def test_resolve_flags_happy_path_groq():
     a = parse_args(["--issue-url", "u"])
-    flags = resolve_flags(a, {"ANTHROPIC_API_KEY": "x", "GITHUB_TOKEN": "t", "GITHUB_USERNAME": "me"})
+    flags = resolve_flags(a, {"GROQ_API_KEY": "x", "GITHUB_TOKEN": "t", "GITHUB_USERNAME": "me"})
     assert flags["use_llm"] is True and flags["token"] == "t" and flags["username"] == "me"
+
+
+def test_resolve_flags_happy_path_anthropic():
+    a = parse_args(["--issue-url", "u"])
+    flags = resolve_flags(a, {"ANTHROPIC_API_KEY": "x"})
+    assert flags["use_llm"] is True
