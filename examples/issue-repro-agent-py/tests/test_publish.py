@@ -50,6 +50,27 @@ def test_open_pr_posts_expected_payload():
     assert "tok" in captured["headers"]["Authorization"]
 
 
+def test_open_pr_recovers_when_pr_already_exists():
+    class Resp:
+        def __init__(self, status, payload, text=""):
+            self.status_code = status
+            self._payload = payload
+            self.text = text
+
+        def json(self):
+            return self._payload
+
+    class FakeHttp:
+        async def post(self, url, headers=None, json=None):
+            return Resp(422, {"m": "x"}, text="A pull request already exists for o:repro/x.")
+
+        async def get(self, url, headers=None, params=None):
+            return Resp(200, [{"html_url": "https://github.com/o/c/pull/5"}])
+
+    url = asyncio.run(open_pr(_issue(), "repro/x", "T", "B", "tok", http=FakeHttp()))
+    assert url == "https://github.com/o/c/pull/5"
+
+
 def test_publish_without_token_returns_compare_url():
     ws = Workspace(FakeSandbox(), "/work/repo", "pytest")
     res = asyncio.run(publish(ws, _issue(), _repro(), FixResult("green", "d", 1, ""),

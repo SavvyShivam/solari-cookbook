@@ -39,19 +39,26 @@ async def open_pr(issue: Issue, branch: str, title: str, body: str, token: str, 
         import httpx
 
         http = httpx.AsyncClient(timeout=30)
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    api = f"https://api.github.com/repos/{issue.owner}/{issue.repo}"
     try:
         resp = None
         for base in ("main", "master"):
             resp = await http.post(
-                f"https://api.github.com/repos/{issue.owner}/{issue.repo}/pulls",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                },
+                f"{api}/pulls",
+                headers=headers,
                 json={"title": title, "body": body, "head": branch, "base": base},
             )
             if resp.status_code == 201:
                 return resp.json()["html_url"]
+            if resp.status_code == 422 and "already exist" in resp.text.lower():
+                existing = await http.get(
+                    f"{api}/pulls", headers=headers,
+                    params={"head": f"{issue.owner}:{branch}", "state": "open"},
+                )
+                items = existing.json()
+                if items:
+                    return items[0]["html_url"]
         raise RuntimeError(
             f"PR creation failed: {resp.status_code if resp else '?'} "
             f"{resp.json() if resp else ''}"
