@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import posixpath
 import re
 
 _ISSUE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/issues/\d+")
@@ -70,6 +71,24 @@ def section_after(markdown: str, heading: str) -> str:
 def slugify(text: str, max_len: int = 40) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return s[:max_len].rstrip("-")
+
+
+def safe_repo_path(repo_dir: str, path: str) -> str | None:
+    """Resolve `path` (LLM- or traceback-supplied, hence untrusted) to an
+    absolute path inside `repo_dir`. Returns None if it escapes the repo tree or
+    targets `.git/` — a `.git/hooks/` write would later run with the push
+    credential in scope."""
+    p = path.replace("\\", "/")
+    root = repo_dir.rstrip("/")
+    if p.startswith("/"):
+        full = posixpath.normpath(p)
+    else:
+        full = posixpath.normpath(posixpath.join(root, p))
+    if full != root and not (full + "/").startswith(root + "/"):
+        return None
+    if full == f"{root}/.git" or "/.git/" in f"{full}/":
+        return None
+    return full
 
 
 def files_in_traceback(text: str) -> list[str]:

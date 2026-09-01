@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .models import CmdResult
+from .parsing import safe_repo_path
 
 # Setup lines are run through `sh -c` (commands.run is not shell-interpreted).
 _SETUP = {
@@ -45,9 +46,13 @@ class Workspace:
         return await _run(self.sbx, base[0], base[1:], self.repo_dir)
 
     async def read_files(self, paths: list[str]) -> dict[str, str]:
+        """Read files for LLM context. Paths come from a traceback, so confine
+        them to the clone — never read outside it into the prompt."""
         out: dict[str, str] = {}
         for p in paths:
-            full = p if p.startswith("/") else f"{self.repo_dir}/{p}"
+            full = safe_repo_path(self.repo_dir, p)
+            if full is None:
+                continue
             try:
                 out[p] = await self.sbx.files.read_text(full)
             except Exception:

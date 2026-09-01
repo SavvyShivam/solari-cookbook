@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .llm import LLMUnavailable, propose_file_edits
 from .models import FixResult, Issue, ReproResult
-from .parsing import files_in_traceback
+from .parsing import files_in_traceback, safe_repo_path
 from .workspace import Workspace
 
 
@@ -36,7 +36,9 @@ async def apply_edits(ws: Workspace, edits: dict[str, str]) -> list[str]:
     for path, content in edits.items():
         if _is_test_path(path):
             continue
-        full = path if path.startswith("/") else f"{ws.repo_dir}/{path}"
+        full = safe_repo_path(ws.repo_dir, path)
+        if full is None:
+            continue  # refuse writes outside the clone
         await ws.sbx.files.write(full, content)
         written.append(path)
     return written

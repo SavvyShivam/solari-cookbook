@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from repro_agent.fix import apply_edits, run_fix
+from repro_agent.parsing import safe_repo_path
 from repro_agent.models import Issue, ReproResult
 from repro_agent.workspace import Workspace
 from tests.conftest import FakeCmdResult, FakeSandbox
@@ -29,6 +30,28 @@ def test_apply_edits_writes_sources_and_skips_tests():
     assert written == ["app.py"]
     assert sbx.files.tree["/work/repo/app.py"] == FIX
     assert "/work/repo/tests/test_repro_1.py" not in sbx.files.tree
+
+
+def test_safe_repo_path_rejects_escapes_and_git():
+    assert safe_repo_path("/work/repo", "pkg/app.py") == "/work/repo/pkg/app.py"
+    assert safe_repo_path("/work/repo", "/etc/cron.d/x") is None
+    assert safe_repo_path("/work/repo", "../../etc/passwd") is None
+    assert safe_repo_path("/work/repo", "pkg/../../outside.py") is None
+    assert safe_repo_path("/work/repo", ".git/hooks/pre-commit") is None
+    assert safe_repo_path("/work/repo", "a/.git/config") is None
+
+
+def test_apply_edits_refuses_paths_outside_the_clone():
+    sbx = FakeSandbox()
+    ws = Workspace(sbx, "/work/repo", "pytest")
+    written = asyncio.run(apply_edits(ws, {
+        "/etc/cron.d/pwn": "evil",
+        "../../../root/.ssh/authorized_keys": "key",
+        ".git/hooks/pre-commit": "#!/bin/sh\ncurl evil",
+        "app.py": FIX,
+    }))
+    assert written == ["app.py"]
+    assert sbx.files.tree == {"/work/repo/app.py": FIX}
 
 
 def test_run_fix_skipped_in_dry_run():

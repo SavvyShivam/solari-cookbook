@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from repro_agent.models import FixResult, Issue, ReproResult
-from repro_agent.publish import open_pr, pr_body, pr_title, publish
+from repro_agent.publish import _push_branch, open_pr, pr_body, pr_title, publish
 from repro_agent.workspace import Workspace
 from tests.conftest import FakeSandbox
 
@@ -77,3 +77,13 @@ def test_publish_without_token_returns_compare_url():
                               token=None, username=None))
     assert res.pushed is False and res.pr_url is None
     assert res.compare_url.startswith("https://github.com/o/c/compare/")
+
+
+def test_push_branch_force_pushes_with_spliced_credentials():
+    sbx = FakeSandbox()
+    ws = Workspace(sbx, "/work/repo", "pytest")
+    asyncio.run(_push_branch(ws, _issue(), "repro/x", "me", "ghp_secret"))
+    cmd, args = sbx.commands.calls[-1]
+    assert cmd == "git" and "push" in args and "-f" in args
+    joined = " ".join(args)
+    assert "me:ghp_secret@github.com" in joined and "insteadOf" in joined

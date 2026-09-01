@@ -1,10 +1,30 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from .models import FixResult, Issue, PublishResult, ReproResult
 from .parsing import slugify
 
 _AUTHOR = "Repro Agent"
 _EMAIL = "repro-agent@users.noreply.github.com"
+
+
+async def _push_branch(ws, issue: Issue, branch: str, username: str, token: str) -> None:
+    """Force-push the agent's branch. `repro/*` branches are agent-owned, so a
+    re-run replaces the prior attempt rather than failing on non-fast-forward.
+    Credentials are spliced into an `insteadOf` rewrite for this one git process
+    (the same technique the SDK's git.push uses) so they never land in config."""
+    plain = issue.repo_url
+    authed = plain.replace(
+        "https://", f"https://{quote(username, safe='')}:{quote(token, safe='')}@", 1
+    )
+    r = await ws.sbx.commands.run(
+        "git",
+        args=["-c", f"url.{authed}.insteadOf={plain}", "push", "-f", "origin", f"HEAD:{branch}"],
+        cwd=ws.repo_dir,
+    )
+    if getattr(r, "exitCode", getattr(r, "exit_code", 1)) != 0:
+        raise RuntimeError(f"git push failed: {getattr(r, 'stderr', '')[:400]}")
 
 
 def pr_title(issue: Issue, fix: FixResult) -> str:
@@ -72,11 +92,14 @@ async def publish(ws, issue: Issue, repro: ReproResult, fix: FixResult, *,
                   token: str | None, username: str | None) -> PublishResult:
     branch = f"repro/{slugify(issue.title)}"
     await ws.sbx.git.checkout(branch, cwd=ws.repo_dir, create=True)
-    await ws.sbx.git.add(["."], ws.repo_dir)
+    # Stage tracked edits + the new repro test only — never the build artifacts
+    # (`*.egg-info`, `.pytest_cache`, ...) that setup/pytest leave behind.
+    await ws.sbx.commands.run("git", args=["add", "-u"], cwd=ws.repo_dir)
+    await ws.sbx.git.add([repro.test_path], ws.repo_dir)
     await ws.sbx.git.commit(pr_title(issue, fix), cwd=ws.repo_dir, author=_AUTHOR, email=_EMAIL)
     compare_url = f"{issue.repo_url}/compare/{branch}?expand=1"
     if not token or not username:
         return PublishResult(branch=branch, pushed=False, pr_url=None, compare_url=compare_url)
-    await ws.sbx.git.push(cwd=ws.repo_dir, branch=branch, username=username, password=token)
+    await _push_branch(ws, issue, branch, username, token)
     pr_url = await open_pr(issue, branch, pr_title(issue, fix), pr_body(issue, repro, fix), token)
     return PublishResult(branch=branch, pushed=True, pr_url=pr_url, compare_url=compare_url)
