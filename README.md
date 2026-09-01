@@ -33,6 +33,14 @@ past. Copy one into your project and change the parts you care about.
 | --- | --- | --- |
 | [desktop-computer-use-py](examples/desktop-computer-use-py) | Python | Screenshot, click, and type on a Linux GUI |
 
+### Recipes
+
+End-to-end builds that chain more than one primitive.
+
+| Example | Language | What it shows |
+| --- | --- | --- |
+| [issue-repro-agent-py](examples/issue-repro-agent-py) | Python | GitHub issue → browser reads it → sandbox reproduces it with a failing test → `git.push` a branch → PR opened. Browser + Sandbox + git. |
+
 ## Running an example
 
 Each directory is self-contained.
