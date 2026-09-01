@@ -78,6 +78,12 @@ async def open_pr(issue: Issue, branch: str, title: str, body: str, token: str, 
                 )
                 items = existing.json()
                 if items:
+                    num = items[0]["number"]
+                    # Re-run: keep the open PR's title/body in sync with this run.
+                    await http.patch(
+                        f"{api}/pulls/{num}", headers=headers,
+                        json={"title": title, "body": body},
+                    )
                     return items[0]["html_url"]
         raise RuntimeError(
             f"PR creation failed: {resp.status_code if resp else '?'} "

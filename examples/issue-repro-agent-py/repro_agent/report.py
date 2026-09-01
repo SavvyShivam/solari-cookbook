@@ -19,21 +19,26 @@ def _pre(text: str) -> str:
     return f"<pre>{_html.escape(text)}</pre>"
 
 
+def _a(url: str, label: str | None = None) -> str:
+    u = _html.escape(url, quote=True)
+    return f'<a href="{u}">{_html.escape(label or url)}</a>'
+
+
 def render_report_html(issue: Issue, repro: ReproResult, fix: FixResult,
                        publish: PublishResult) -> str:
     status = ('<span class="tag green">FIX GREEN</span>' if fix.status == "green"
               else '<span class="tag red">REPRODUCED; FIX UNRESOLVED</span>')
     pr_line = (
-        f'<p>PR: <a href="{publish.pr_url}">{publish.pr_url}</a></p>' if publish.pr_url
-        else f'<p>Branch pushed: <code>{publish.branch}</code> — '
-             f'<a href="{publish.compare_url}">open a PR</a></p>'
+        f"<p>PR: {_a(publish.pr_url)}</p>" if publish.pr_url
+        else f'<p>Branch pushed: <code>{_html.escape(publish.branch)}</code> — '
+             f'{_a(publish.compare_url, "open a PR")}</p>'
     )
     fix_block = (f"<h2>Fix diff</h2>{_pre(fix.diff)}" if fix.status == "green"
                  else "<h2>Fix</h2><p>Not resolved automatically; regression test committed.</p>")
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <title>Repro Agent — {_html.escape(issue.title)}</title><style>{_CSS}</style></head><body>
 <h1>{_html.escape(issue.title)} {status}</h1>
-<p>Issue: <a href="{issue.url}">{issue.url}</a></p>
+<p>Issue: {_a(issue.url)}</p>
 {pr_line}
 <h2>Reproducing test</h2>{_pre(repro.test_code)}
 <h2>Captured failure (base commit)</h2>{_pre(repro.output[:4000])}

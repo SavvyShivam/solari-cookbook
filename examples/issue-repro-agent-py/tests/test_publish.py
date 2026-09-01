@@ -61,14 +61,24 @@ def test_open_pr_recovers_when_pr_already_exists():
             return self._payload
 
     class FakeHttp:
+        def __init__(self):
+            self.patched = None
+
         async def post(self, url, headers=None, json=None):
             return Resp(422, {"m": "x"}, text="A pull request already exists for o:repro/x.")
 
         async def get(self, url, headers=None, params=None):
-            return Resp(200, [{"html_url": "https://github.com/o/c/pull/5"}])
+            return Resp(200, [{"html_url": "https://github.com/o/c/pull/5", "number": 5}])
 
-    url = asyncio.run(open_pr(_issue(), "repro/x", "T", "B", "tok", http=FakeHttp()))
+        async def patch(self, url, headers=None, json=None):
+            self.patched = (url, json)
+            return Resp(200, {})
+
+    http = FakeHttp()
+    url = asyncio.run(open_pr(_issue(), "repro/x", "NEW TITLE", "NEW BODY", "tok", http=http))
     assert url == "https://github.com/o/c/pull/5"
+    assert http.patched[0] == "https://api.github.com/repos/o/c/pulls/5"
+    assert http.patched[1] == {"title": "NEW TITLE", "body": "NEW BODY"}
 
 
 def test_publish_without_token_returns_compare_url():

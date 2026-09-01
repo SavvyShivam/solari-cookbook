@@ -48,7 +48,10 @@ async def run(args: argparse.Namespace, env: dict) -> int:
     for w in flags["warnings"]:
         print(f"warning: {w}", file=sys.stderr)
 
-    solari_key = env["SOLARI_API_KEY"]
+    solari_key = env.get("SOLARI_API_KEY")
+    if not solari_key:
+        print("error: SOLARI_API_KEY is not set", file=sys.stderr)
+        return 2
     async with SandboxClient(api_key=solari_key, base_url="https://api.getsolari.com") as sandboxes:
         async with Solari(api_key=solari_key) as solari:
             async with await solari.launch(stealth=True) as browser:
@@ -59,7 +62,7 @@ async def run(args: argparse.Namespace, env: dict) -> int:
                     print(f"error: {exc}", file=sys.stderr)
                     return 2
 
-                ws = await open_workspace(sandboxes, issue.repo_url, token=flags["token"])
+                ws = await open_workspace(sandboxes, issue.repo_url)
                 try:
                     try:
                         repro = await run_repro(ws, issue, use_llm=flags["use_llm"])

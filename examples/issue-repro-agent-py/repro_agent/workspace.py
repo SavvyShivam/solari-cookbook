@@ -63,8 +63,7 @@ class Workspace:
         await self.sbx.commands.run("git", args=["checkout", "--", "."], cwd=self.repo_dir)
 
 
-async def open_workspace(sandboxes, repo_url: str, *, token: str | None = None,
-                         repo_dir: str = "/work/repo") -> Workspace:
+async def open_workspace(sandboxes, repo_url: str, *, repo_dir: str = "/work/repo") -> Workspace:
     sbx = await sandboxes.create(template="base", timeout_ms=15 * 60_000)
     await sbx.connect()
     await sbx.git.clone(repo_url, path=repo_dir, depth=1)
