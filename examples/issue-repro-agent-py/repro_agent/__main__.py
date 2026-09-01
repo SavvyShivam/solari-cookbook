@@ -73,9 +73,6 @@ async def run(args: argparse.Namespace, env: dict) -> int:
 
                     fix = await run_fix(ws, issue, repro, use_llm=flags["use_llm"],
                                         max_attempts=args.max_fix_attempts)
-                    await ws.sbx.commands.run(
-                        "sh", args=["-c", f"rm -f {ws.repo_dir}/.repro_agent.patch"], cwd=ws.repo_dir
-                    )
                     pub = await publish(ws, issue, repro, fix,
                                         token=flags["token"], username=flags["username"])
 

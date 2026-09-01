@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 
-from repro_agent.fix import apply_diff, run_fix
+from repro_agent.fix import apply_edits, run_fix
 from repro_agent.models import Issue, ReproResult
 from repro_agent.workspace import Workspace
 from tests.conftest import FakeCmdResult, FakeSandbox
 
-DIFF = "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-if limit:\n+if limit is not None:\n"
+FIX = "from flask import Flask\n# fixed\nif limit is not None:\n    items = WIDGETS[:limit]\n"
 
 
 def _issue():
@@ -22,11 +22,13 @@ def _repro():
                        output='File "/work/repo/app.py", line 10\nAssertionError')
 
 
-def test_apply_diff_runs_git_apply():
-    sbx = FakeSandbox(cmd_results={"git apply": FakeCmdResult(exitCode=0)})
+def test_apply_edits_writes_sources_and_skips_tests():
+    sbx = FakeSandbox()
     ws = Workspace(sbx, "/work/repo", "pytest")
-    assert asyncio.run(apply_diff(ws, DIFF)) is True
-    assert "/work/repo/.repro_agent.patch" in sbx.files.tree
+    written = asyncio.run(apply_edits(ws, {"app.py": FIX, "tests/test_repro_1.py": "cheat"}))
+    assert written == ["app.py"]
+    assert sbx.files.tree["/work/repo/app.py"] == FIX
+    assert "/work/repo/tests/test_repro_1.py" not in sbx.files.tree
 
 
 def test_run_fix_skipped_in_dry_run():
@@ -35,24 +37,32 @@ def test_run_fix_skipped_in_dry_run():
     assert res.status == "skipped" and res.attempts == 0
 
 
-def test_run_fix_green_when_patch_fixes(monkeypatch):
-    monkeypatch.setattr("repro_agent.fix.propose_patch", lambda **kw: DIFF)
+def test_run_fix_green_when_edit_fixes(monkeypatch):
+    monkeypatch.setattr("repro_agent.fix.propose_file_edits", lambda **kw: {"app.py": FIX})
     sbx = FakeSandbox(
         files={"/work/repo/app.py": "if limit:"},
-        cmd_results={"git apply": FakeCmdResult(exitCode=0), "pytest": FakeCmdResult(exitCode=0)},
+        cmd_results={"pytest": FakeCmdResult(exitCode=0), "git diff": FakeCmdResult(stdout="D")},
     )
     ws = Workspace(sbx, "/work/repo", "pytest")
     res = asyncio.run(run_fix(ws, _issue(), _repro(), use_llm=True, max_attempts=2))
-    assert res.status == "green" and res.diff == DIFF and res.attempts == 1
+    assert res.status == "green" and res.attempts == 1 and res.diff == "D"
 
 
 def test_run_fix_unresolved_after_attempts(monkeypatch):
-    monkeypatch.setattr("repro_agent.fix.propose_patch", lambda **kw: DIFF)
+    monkeypatch.setattr("repro_agent.fix.propose_file_edits", lambda **kw: {"app.py": FIX})
     sbx = FakeSandbox(
         files={"/work/repo/app.py": "if limit:"},
-        cmd_results={"git apply": FakeCmdResult(exitCode=0),
-                     "pytest": FakeCmdResult(exitCode=1, stdout="still red")},
+        cmd_results={"pytest": FakeCmdResult(exitCode=1, stdout="still red")},
     )
     ws = Workspace(sbx, "/work/repo", "pytest")
     res = asyncio.run(run_fix(ws, _issue(), _repro(), use_llm=True, max_attempts=2))
     assert res.status == "unresolved" and res.attempts == 2
+
+
+def test_run_fix_unresolved_when_only_test_edits(monkeypatch):
+    monkeypatch.setattr("repro_agent.fix.propose_file_edits",
+                        lambda **kw: {"tests/test_repro_1.py": "assert True"})
+    sbx = FakeSandbox(files={"/work/repo/app.py": "if limit:"})
+    ws = Workspace(sbx, "/work/repo", "pytest")
+    res = asyncio.run(run_fix(ws, _issue(), _repro(), use_llm=True, max_attempts=1))
+    assert res.status == "unresolved"
