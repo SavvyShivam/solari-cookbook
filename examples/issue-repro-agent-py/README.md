@@ -70,7 +70,7 @@ row because the handler guards with `if limit:` and `0` is falsy).
 | `repro.py` | writes `tests/test_repro_1.py`, runs it; "reproduced" == the test fails | `sandbox.commands` / `files` |
 | `llm.py` | `propose_file_edits()` / `propose_repro_test()`; provider picked by key — `GROQ_API_KEY` (`openai/gpt-oss-120b`) or `ANTHROPIC_API_KEY` (`claude-sonnet-5`), `REPRO_AGENT_MODEL` to override | Groq / Anthropic |
 | `fix.py` | feeds the model the failing test + traceback + the repo's non-test sources, applies **whole-file rewrites** (weak models mangle unified diffs), re-runs, retries once, `git checkout` reverts between tries; never edits test files | `sandbox` |
-| `publish.py` | `git checkout -b`, commit, `git.push` with a per-call PAT, then `POST /repos/{o}/{r}/pulls` (reuses an open PR on 422) | `sandbox.git` + `httpx` |
+| `publish.py` | `git checkout -b`, stage tracked edits + the repro test, commit, force-push the `repro/*` branch (PAT spliced into a one-process `insteadOf`, never written to config), then `POST /repos/{o}/{r}/pulls` (reuses an open PR on 422) | `sandbox.git` + `httpx` |
 | `report.py` | renders `report.html`, serves it from the sandbox, screenshots it through the browser | `sandbox.preview_url` + `browser` |
 | `__main__.py` | wires the pipeline, resolves flags, `sbx.kill()` in `finally` | — |
 
@@ -84,6 +84,11 @@ row because the handler guards with `if limit:` and `0` is falsy).
   models) emit unified diffs with broken `@@` ranges that `git apply` rejects.
   Asking for the complete new file and writing it with `sandbox.files.write` is
   deterministic; the PR's diff is recovered with `git diff` afterwards.
+- **The issue body is untrusted.** It reaches the model, so an LLM-proposed edit
+  is attacker-influenced. `safe_repo_path()` confines every write to the clone
+  and blocks `.git/` (a prompt-injected `.git/hooks/pre-commit` would run with
+  the push PAT in scope); the fix step never edits test files; the whole run is
+  a throwaway hardware-isolated microVM.
 - **Planted-bug fixture** rather than a live open-source issue: the submission
   is judged on the agent, and a deterministic target keeps the demo honest and
   fast.
@@ -98,7 +103,7 @@ row because the handler guards with `if limit:` and `0` is falsy).
 ## Tests
 
 ```bash
-pip install -e ".[dev]" && pytest -q      # 39 unit tests, ~1s
+pip install -e ".[dev]" && pytest -q      # 42 unit tests, ~1s
 python demo.py                             # local planted-bug self-check
 ```
 
